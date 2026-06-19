@@ -1,12 +1,14 @@
-from google.adk.workflow import Workflow, node
+from typing import Literal
+
 from google.adk.agents import LlmAgent
-from google.adk.tools.google_search_tool import GoogleSearchTool
-from google.adk.events.event import Event
 from google.adk.agents.context import Context
 from google.adk.apps import App
+from google.adk.events.event import Event
+from google.adk.tools.google_search_tool import GoogleSearchTool
+from google.adk.workflow import Workflow, node
 from google.genai import types
 from pydantic import BaseModel, Field
-from typing import Literal
+
 
 # 1. Define Schemas
 class ResearchReport(BaseModel):
@@ -54,7 +56,6 @@ def create_researcher() -> LlmAgent:
             'Generate a structured research report based on your findings.'
         ),
         tools=[GoogleSearchTool(bypass_multi_tools_limit=True)],
-        output_schema=ResearchReport,
         output_key="latest_research",
         description="Researches a course topic and returns a detailed research report."
     )
@@ -99,12 +100,16 @@ def init_state(ctx: Context, node_input: types.Content) -> Event:
     return Event(output=topic, state={"topic": topic, "loop_count": 0})
 
 @node
+def get_research_text(ctx: Context, node_input: str) -> Event:
+    return Event(output=node_input, state={"latest_research": node_input})
+
+@node
 def check_verdict(ctx: Context, node_input: CritiqueResult) -> Event:
     loop_count = ctx.state.get("loop_count", 0) + 1
     # Prevent infinite loop: cap at 3 attempts
     if loop_count >= 3:
         return Event(output=node_input, route="exit", state={"loop_count": loop_count})
-    
+
     if node_input.verdict == "APPROVED":
         return Event(output=node_input, route="exit", state={"loop_count": loop_count})
     else:
@@ -121,11 +126,11 @@ root_agent = Workflow(
     edges=[
         ('START', init_state),
         (init_state, researcher),
-        (researcher, judge),
+        (researcher, get_research_text),
+        (get_research_text, judge),
         (judge, check_verdict),
-        (check_verdict, researcher, "continue"),
-        (check_verdict, content_builder, "exit"),
+        (check_verdict, {"continue": researcher, "exit": content_builder}),
     ]
 )
 
-app = App(root_agent=root_agent, name="app")
+app = App(root_agent=root_agent, name="course_creator")

@@ -1,5 +1,6 @@
 # course-creator
 
+[![Fork Repository](https://img.shields.io/badge/Fork-Repository-blue?style=for-the-badge&logo=github)](https://github.com/litmus-zhang/course-creator/fork)
 
 Agent generated with `agents-cli` version `0.5.0`
 
@@ -244,3 +245,6 @@ If this AI system suddenly serves **10,000 concurrent users tomorrow**, here is 
 ## Observability
 
 Built-in telemetry exports to Cloud Trace, BigQuery, and Cloud Logging.
+
+
+gcloud container clusters get-credentials deepstack-june-2026 —region us-central1

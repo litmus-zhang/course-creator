@@ -1,6 +1,6 @@
 name: "course-creator"
 acli_version: "0.5.0"
-agent_directory: "app"
+agent_directory: "."
 region: "us-east1"
 base_template: "local_course_creator"
 generated_at: "2026-06-19T15:37:10.209284+00:00"
