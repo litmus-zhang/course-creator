@@ -70,7 +70,7 @@ You can also use features from the [ADK](https://adk.dev/) CLI with `uv run adk`
 
 ## Development
 
-Edit your agent logic in `app/agent.py` and test with `agents-cli playground` - it auto-reloads on save.
+Edit your agent logic in `agent.py` and test with `agents-cli playground` - it auto-reloads on save.
 
 ## Deployment to Google Kubernetes Engine (GKE)
 
