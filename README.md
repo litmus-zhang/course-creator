@@ -29,6 +29,7 @@ Before you begin, ensure you have:
 - **agents-cli**: Agents CLI - Install with `uv tool install google-agents-cli`
 - **Google Cloud SDK**: For GCP services - [Install](https://cloud.google.com/sdk/docs/install)
 - **Kubectl** [Install](https://kubernetes.io/docs/tasks/tools/install-kubectl/)
+- **gke-gcloud-auth-plugin** [Install](https://cloud.google.com/kubernetes-engine/docs/how-to/cluster-access-for-kubectl#install_plugin)
 
 
 ## Quick Start
@@ -145,162 +146,46 @@ done
 
 Once you have successfully connected to Google Cloud and set your Cloud Project ID, you are ready to deploy your ADK project files to GKE.
 
-### Step 1: Deploy the Application
+### Step : Provision a GKE Autopilot Cluster
+GKE Autopilot is recommended for most workloads as it manages pod provisioning, node scaling, and security defaults automatically:
+
+```bash
+
+gcloud container clusters create-auto course-creator-cluster \
+    --region us-east1 \
+    --project deepstack-june-2026
+```
+Get credentials for your new cluster:
+```bash
+gcloud container clusters get-credentials course-creator-cluster --region us-east1
+```
+
+### Step 2: Deploy the Application 
 Deploy the project with the command below:
 
 ```bash
 bash deploy.sh
 ```
 
-### Step 2: Push to Artifact Registry
-Create a repository in Google Artifact Registry and push your image:
+### Verifying Your Deployment¶
+Since we used `adk deploy gke`, we will verify the deployment using `kubectl`:
+
+Check the Pods: Ensure your agent's pods are in the Running state.
 
 ```bash
-# Create repository
-gcloud artifacts repositories create course-creator-repo \
-    --repository-format=docker \
-    --location=us-east1 \
-    --description="Docker repository for Course Creator Agent"
-
-# Authenticate docker
-gcloud auth configure-docker us-east1-docker.pkg.dev
-
-# Push image
-docker push us-east1-docker.pkg.dev/deepstack-june-2026/course-creator-repo/course-creator:v1
+kubectl get pods
 ```
+You should see output like `adk-default-service-name-xxxx-xxxx ... 1/1 Running in the default namespace.`.
 
-### Step 3: Provision a GKE Autopilot Cluster
-GKE Autopilot is recommended for most workloads as it manages pod provisioning, node scaling, and security defaults automatically:
+Find the External IP: Get the public IP address for your agent's service.
 
 ```bash
-gcloud container clusters create-auto course-creator-cluster \
-    --region us-east1 \
-    --project deepstack-june-2026
+kubectl get service
 ```
+NAME                       TYPE           CLUSTER-IP      EXTERNAL-IP     PORT(S)        AGE
+adk-default-service-name   LoadBalancer   34.118.228.70   34.63.153.253   80:32581/TCP   5d20h
 
-Get credentials for your new cluster:
-```bash
-gcloud container clusters get-credentials course-creator-cluster --region us-east1
-```
-
-### Step 4: Configure Centralized Sessions (Database)
-By default, the agent runs with in-memory sessions. For multi-replica GKE deployments, you must use a centralized database (like Cloud SQL PostgreSQL) so that any GKE pod can handle requests for any active session.
-
-1. Create a Cloud SQL instance:
-   ```bash
-   gcloud sql instances create course-creator-db --database-version=POSTGRES_15 --tier=db-custom-1-3840 --region=us-east1
-   ```
-2. Configure the runner in your application (e.g. `app/fast_api_app.py`) to use `DatabaseSessionService` instead of `InMemorySessionService`, pointing to your database connection string.
-
----
-
-### Step 5: Kubernetes Manifests
-
-Create a deployment file (`deployment.yaml`) defining the deployment, service, ingress, and horizontal pod autoscaler (HPA):
-
-```yaml
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: course-creator
-  labels:
-    app: course-creator
-spec:
-  replicas: 3
-  selector:
-    matchLabels:
-      app: course-creator
-  template:
-    metadata:
-      labels:
-        app: course-creator
-    spec:
-      containers:
-      - name: course-creator
-        image: us-east1-docker.pkg.dev/<PROJECT_ID>/course-creator-repo/course-creator:v1
-        ports:
-        - containerPort: 8080
-        resources:
-          requests:
-            memory: "1Gi"
-            cpu: "500m"
-          limits:
-            memory: "2Gi"
-            cpu: "1000m"
-        env:
-        - name: GEMINI_API_KEY
-          valueFrom:
-            secretKeyRef:
-              name: gemini-secrets
-              key: api-key
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: course-creator-service
-spec:
-  type: ClusterIP
-  selector:
-    app: course-creator
-  ports:
-  - port: 80
-    targetPort: 8080
----
-apiVersion: autoscaling/v2
-kind: HorizontalPodAutoscaler
-metadata:
-  name: course-creator-hpa
-spec:
-  scaleTargetRef:
-    apiVersion: apps/v1
-    kind: Deployment
-    name: course-creator
-  minReplicas: 3
-  maxReplicas: 20
-  metrics:
-  - type: Resource
-    resource:
-      name: cpu
-      target:
-        type: Utilization
-        averageUtilization: 70
-```
-
-Apply the secret and deploy to GKE:
-```bash
-# Create GCP Secret
-kubectl create secret generic gemini-secrets --from-literal=api-key=YOUR_GEMINI_API_KEY
-
-# Deploy manifests
-kubectl apply -f deployment.yaml
-```
-
-### Step 6: Test the Agent in Action
-Once the pods are running, you can test the deployment locally by port-forwarding the GKE service:
-
-```bash
-# Port-forward the service to localhost:8080
-kubectl port-forward svc/course-creator-service 8080:80
-```
-
-Now, send a test query in another terminal to trigger the multi-agent pipeline (Researcher -> Judge -> Content Builder) and see the streaming output in real-time:
-
-```bash
-curl -N -X POST http://127.0.0.1:8080/run_sse \
-  -H "Content-Type: application/json" \
-  -d '{
-    "app_name": "course_creator",
-    "user_id": "test-user",
-    "session_id": "session-1",
-    "new_message": {
-      "role": "user",
-      "parts": [{"text": "Create a course outline for Introduction to Docker"}]
-    },
-    "streaming": true
-  }'
-```
-
----
+We can navigate to the external IP `http://YOUR_EXTERNAL_IP` and interact with the agent via UI.
 
 ## 📈 Scaling to 10,000 Users: What Breaks First?
 
@@ -347,17 +232,6 @@ kubectl delete secret gemini-secrets
 # 2. Delete the GKE Autopilot Cluster
 gcloud container clusters delete course-creator-cluster \
     --region us-east1 \
-    --project deepstack-june-2026 \
-    --quiet
-
-# 3. Delete the Cloud SQL Database Instance
-gcloud sql instances delete course-creator-db \
-    --project deepstack-june-2026 \
-    --quiet
-
-# 4. Delete the Artifact Registry Repository
-gcloud artifacts repositories delete course-creator-repo \
-    --location us-east1 \
     --project deepstack-june-2026 \
     --quiet
 ```
