@@ -1,5 +1,7 @@
+import os
 from typing import Literal
 
+import google.auth
 from google.adk.agents import LlmAgent
 from google.adk.agents.context import Context
 from google.adk.apps import App
@@ -8,6 +10,11 @@ from google.adk.tools.google_search_tool import GoogleSearchTool
 from google.adk.workflow import Workflow, node
 from google.genai import types
 from pydantic import BaseModel, Field
+
+_, project_id = google.auth.default()
+os.environ["GOOGLE_CLOUD_PROJECT"] = project_id
+os.environ["GOOGLE_CLOUD_LOCATION"] = "global"
+os.environ["GOOGLE_GENAI_USE_VERTEXAI"] = "True"
 
 
 # 1. Define Schemas

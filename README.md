@@ -24,6 +24,7 @@ Before you begin, ensure you have:
 - **uv**: Python package manager (used for all dependency management in this project) - [Install](https://docs.astral.sh/uv/getting-started/installation/) ([add packages](https://docs.astral.sh/uv/concepts/dependencies/) with `uv add <package>`)
 - **agents-cli**: Agents CLI - Install with `uv tool install google-agents-cli`
 - **Google Cloud SDK**: For GCP services - [Install](https://cloud.google.com/sdk/docs/install)
+- **Kubectl** [Install](https://kubernetes.io/docs/tasks/tools/install-kubectl/)
 
 
 ## Quick Start
@@ -72,6 +73,8 @@ You can also use features from the [ADK](https://adk.dev/) CLI with `uv run adk`
 
 Edit your agent logic in `agent.py` and test with `agents-cli playground` - it auto-reloads on save.
 
+
+
 ## Deployment to Google Kubernetes Engine (GKE)
 
 This guide walks you through building, configuring, and deploying this ADK-based multi-agent system to a production GKE cluster, optimized for high scalability.
@@ -80,14 +83,69 @@ This guide walks you through building, configuring, and deploying this ADK-based
 1. **Google Cloud SDK** installed and authenticated: `gcloud auth login`
 2. **Docker** or a compatible container builder installed locally.
 3. A GCP Project with billing enabled.
+4. **Enable APIs and IAM Permissions**: Run the following single command to enable required APIs and grant roles (Kubernetes Developer, Storage Object Viewer, Artifact Registry Create on Push Writer, Logs Writer) to your Compute Engine default service account:
+
 
 ---
 
-### Step 1: Containerize the Application
-The project includes a production-ready `Dockerfile` that uses `uv` for fast, reproducible dependency syncing. Build the Docker image locally:
+### Step 0: Connect to your Google Cloud project
+Before you deploy your ADK project, you must connect to Google Cloud and your project. After logging into your Google Cloud account, you should verify that your deployment target project is visible from your account and that it is configured as your current project.
+
+To connect to Google Cloud and list your project:
+
+In a terminal window of your development environment, login to your Google Cloud account:
+
+`gcloud auth application-default login`
+
+Create a new project:
+
+`gcloud projects create deepstack-june-2026 --name="deepstack-june-2026"`
+
+Set your target project using the Google Cloud Project ID:
 
 ```bash
-docker build -t us-east1-docker.pkg.dev/<PROJECT_ID>/course-creator-repo/course-creator:v1 .
+gcloud auth application-default set-quota-project deepstack-june-2026
+
+gcloud config set project deepstack-june-2026
+
+```
+
+Verify your Google Cloud target project is set:
+
+```bash
+gcloud config get-value project
+```
+
+Ensure billing is enabled for your project by listing your billing accounts and linking your project to the active billing account:
+
+```bash
+# List billing accounts to get the BILLING_ACCOUNT_ID
+gcloud billing accounts list
+
+# Link the project to the billing account
+gcloud billing projects link deepstack-june-2026 --billing-account=YOUR_BILLING_ACCOUNT_ID
+```
+
+Enable the required APIs and configure IAM permissions:
+
+```bash
+gcloud services enable container.googleapis.com cloudbuild.googleapis.com containerregistry.googleapis.com && \
+PROJECT_NUMBER=$(gcloud projects describe $(gcloud config get-value project) --format="value(projectNumber)") && \
+for role in roles/container.developer roles/storage.objectViewer roles/artifactregistry.createOnPushWriter roles/logging.logWriter; do \
+  gcloud projects add-iam-policy-binding $(gcloud config get-value project) \
+    --member="serviceAccount:${PROJECT_NUMBER}-compute@developer.gserviceaccount.com" \
+    --role="${role}"; \
+done
+```
+
+
+Once you have successfully connected to Google Cloud and set your Cloud Project ID, you are ready to deploy your ADK project files to GKE.
+
+### Step 1: Deploy the Application
+Deploy the project with the command below:
+
+```bash
+bash deploy.sh
 ```
 
 ### Step 2: Push to Artifact Registry
@@ -104,7 +162,7 @@ gcloud artifacts repositories create course-creator-repo \
 gcloud auth configure-docker us-east1-docker.pkg.dev
 
 # Push image
-docker push us-east1-docker.pkg.dev/<PROJECT_ID>/course-creator-repo/course-creator:v1
+docker push us-east1-docker.pkg.dev/deepstack-june-2026/course-creator-repo/course-creator:v1
 ```
 
 ### Step 3: Provision a GKE Autopilot Cluster
@@ -113,7 +171,7 @@ GKE Autopilot is recommended for most workloads as it manages pod provisioning, 
 ```bash
 gcloud container clusters create-auto course-creator-cluster \
     --region us-east1 \
-    --project <PROJECT_ID>
+    --project deepstack-june-2026
 ```
 
 Get credentials for your new cluster:
@@ -213,6 +271,31 @@ kubectl create secret generic gemini-secrets --from-literal=api-key=YOUR_GEMINI_
 kubectl apply -f deployment.yaml
 ```
 
+### Step 6: Test the Agent in Action
+Once the pods are running, you can test the deployment locally by port-forwarding the GKE service:
+
+```bash
+# Port-forward the service to localhost:8080
+kubectl port-forward svc/course-creator-service 8080:80
+```
+
+Now, send a test query in another terminal to trigger the multi-agent pipeline (Researcher -> Judge -> Content Builder) and see the streaming output in real-time:
+
+```bash
+curl -N -X POST http://127.0.0.1:8080/run_sse \
+  -H "Content-Type: application/json" \
+  -d '{
+    "app_name": "course_creator",
+    "user_id": "test-user",
+    "session_id": "session-1",
+    "new_message": {
+      "role": "user",
+      "parts": [{"text": "Create a course outline for Introduction to Docker"}]
+    },
+    "streaming": true
+  }'
+```
+
 ---
 
 ## 📈 Scaling to 10,000 Users: What Breaks First?
@@ -246,5 +329,31 @@ If this AI system suddenly serves **10,000 concurrent users tomorrow**, here is 
 
 Built-in telemetry exports to Cloud Trace, BigQuery, and Cloud Logging.
 
+---
 
-gcloud container clusters get-credentials deepstack-june-2026 —region us-central1
+## 🧹 Teardown & Clean Up
+
+To avoid ongoing charges for your cluster and cloud resources, tear down the environment by running the following commands:
+
+```bash
+# 1. Delete Kubernetes resources (Deployment, Service, HPA, Secrets)
+kubectl delete -f deployment.yaml
+kubectl delete secret gemini-secrets
+
+# 2. Delete the GKE Autopilot Cluster
+gcloud container clusters delete course-creator-cluster \
+    --region us-east1 \
+    --project deepstack-june-2026 \
+    --quiet
+
+# 3. Delete the Cloud SQL Database Instance
+gcloud sql instances delete course-creator-db \
+    --project deepstack-june-2026 \
+    --quiet
+
+# 4. Delete the Artifact Registry Repository
+gcloud artifacts repositories delete course-creator-repo \
+    --location us-east1 \
+    --project deepstack-june-2026 \
+    --quiet
+```
