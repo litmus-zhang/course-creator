@@ -146,7 +146,7 @@ done
 
 Once you have successfully connected to Google Cloud and set your Cloud Project ID, you are ready to deploy your ADK project files to GKE.
 
-### Step : Provision a GKE Autopilot Cluster
+### Step 1: Provision a GKE Autopilot Cluster
 GKE Autopilot is recommended for most workloads as it manages pod provisioning, node scaling, and security defaults automatically:
 
 ```bash
@@ -160,7 +160,7 @@ Get credentials for your new cluster:
 gcloud container clusters get-credentials course-creator-cluster --region us-east1
 ```
 
-### Step 2: Deploy the Application 
+### Step : Deploy the Application 
 Deploy the project with the command below:
 
 ```bash
