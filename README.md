@@ -4,6 +4,10 @@
 
 Agent generated with `agents-cli` version `0.5.0`
 
+Scan QR Code below to follow along:
+
+![QR Code](./QR-Code.png)
+
 ## Project Structure
 
 ```
