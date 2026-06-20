@@ -125,27 +125,7 @@ Verify your Google Cloud target project is set:
 gcloud config get-value project
 ```
 
-Ensure billing is enabled for your project by listing your billing accounts and linking your project to the active billing account:
 
-```bash
-# List billing accounts to get the BILLING_ACCOUNT_ID
-gcloud billing accounts list
-
-# Link the project to the billing account
-gcloud billing projects link deepstack-june-2026 --billing-account=YOUR_BILLING_ACCOUNT_ID
-```
-
-Enable the required APIs and configure IAM permissions:
-
-```bash
-gcloud services enable container.googleapis.com cloudbuild.googleapis.com containerregistry.googleapis.com && \
-PROJECT_NUMBER=$(gcloud projects describe $(gcloud config get-value project) --format="value(projectNumber)") && \
-for role in roles/container.developer roles/storage.objectViewer roles/artifactregistry.createOnPushWriter roles/logging.logWriter; do \
-  gcloud projects add-iam-policy-binding $(gcloud config get-value project) \
-    --member="serviceAccount:${PROJECT_NUMBER}-compute@developer.gserviceaccount.com" \
-    --role="${role}"; \
-done
-```
 
 
 Once you have successfully connected to Google Cloud and set your Cloud Project ID, you are ready to deploy your ADK project files to GKE.
