@@ -102,16 +102,20 @@ In a terminal window of your development environment, login to your Google Cloud
 
 `gcloud auth application-default login`
 
-Create a new project:
+<!-- Create a new project:
 
-`gcloud projects create deepstack-june-2026 --name="deepstack-june-2026"`
+`gcloud projects create deepstack-june-2026 --name="deepstack-june-2026"` -->
 
 Set your target project using the Google Cloud Project ID:
 
 ```bash
-gcloud auth application-default set-quota-project deepstack-june-2026
+gcloud auth application-default set-quota-project trans-engine-441323-b5
+# gcloud auth application-default set-quota-project deepstack-june-2026
 
-gcloud config set project deepstack-june-2026
+
+
+gcloud config set project trans-engine-441323-b5
+# gcloud config set project deepstack-june-2026
 
 ```
 
@@ -146,22 +150,19 @@ done
 
 Once you have successfully connected to Google Cloud and set your Cloud Project ID, you are ready to deploy your ADK project files to GKE.
 
-### Step 1: Provision a GKE Autopilot Cluster
+### Step 1: Ensure you have access to the Cluster
 GKE Autopilot is recommended for most workloads as it manages pod provisioning, node scaling, and security defaults automatically:
 
+Get credentials for the cluster:
 ```bash
-
-gcloud container clusters create-auto course-creator-cluster \
-    --region us-east1 \
-    --project deepstack-june-2026
-```
-Get credentials for your new cluster:
-```bash
-gcloud container clusters get-credentials course-creator-cluster --region us-east1
+gcloud container clusters get-credentials deepstack-june-2026 --region us-central1
 ```
 
-### Step : Deploy the Application 
+### Step 2: Deploy the Application 
+
+
 Deploy the project with the command below:
+
 
 ```bash
 bash deploy.sh
@@ -177,13 +178,20 @@ kubectl get pods
 ```
 You should see output like `adk-default-service-name-xxxx-xxxx ... 1/1 Running in the default namespace.`.
 
-Find the External IP: Get the public IP address for your agent's service.
+Find the External IP: Get the public IP address for your agent's service. By default, the service may be deployed as `ClusterIP` (without an external IP). If so, patch the service type to `LoadBalancer` to expose it externally and obtain a public IP:
 
 ```bash
-kubectl get service
+# Patch the service to type LoadBalancer
+kubectl patch svc adk-default-service-name -p '{"spec": {"type": "LoadBalancer"}}'
+
+# Verify and get the External IP
+kubectl get service adk-default-service-name
+```
+
 ```
 NAME                       TYPE           CLUSTER-IP      EXTERNAL-IP     PORT(S)        AGE
 adk-default-service-name   LoadBalancer   34.118.228.70   34.63.153.253   80:32581/TCP   5d20h
+```
 
 We can navigate to the external IP `http://YOUR_EXTERNAL_IP` and interact with the agent via UI.
 
